@@ -77,7 +77,7 @@ export function SafeVideo({ src, ...props }) {
   return <video src={resolved || ''} {...props} />;
 }
 
-export function VideoPlayer({ url, title, style, ...props }) {
+export function VideoPlayer({ url, title, style, speed = 1.0, ...props }) {
   const resolvedUrl = useResolvedUrl(url);
 
   if (!resolvedUrl) return null;
@@ -129,6 +129,17 @@ export function VideoPlayer({ url, title, style, ...props }) {
   // Archivo directo de video o base64
   return (
     <video
+      ref={(el) => {
+        if (el) {
+          el.playbackRate = speed;
+        }
+      }}
+      onPlay={(e) => {
+        e.target.playbackRate = speed;
+      }}
+      onLoadedMetadata={(e) => {
+        e.target.playbackRate = speed;
+      }}
       src={resolvedUrl}
       loop
       muted

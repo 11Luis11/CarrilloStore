@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Settings, Save, Upload, Database, Code, 
   CheckCircle, MessageSquare, Star, Trash2, Plus, Users, Globe, Tag, Image, X, Video
 } from 'lucide-react';
 import { DataService } from '../../services/dataService';
-import { VideoPlayer } from '../../components/MediaResolver';
+import { VideoPlayer, SafeImage } from '../../components/MediaResolver';
 
 export default function Config() {
   const [activeTab, setActiveTab] = useState('general'); // 'general', 'wholesale', 'reviews', 'footer', 'users', 'videos', 'database'
@@ -24,6 +24,17 @@ export default function Config() {
 
   // General Hero List State
   const [heroUploading, setHeroUploading] = useState(false);
+  const [heroEditMsg, setHeroEditMsg] = useState('');
+
+  // Slider Cropper States
+  const [showCropModal, setShowCropModal] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState(null);
+  const [cropZoom, setCropZoom] = useState(1);
+  const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
+  const [editingIdx, setEditingIdx] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const imageRef = useRef(null);
 
   // New review form
   const [newReview, setNewReview] = useState({ name: '', stars: 5, comment: '' });
@@ -69,8 +80,7 @@ export default function Config() {
   const handleSave = async (e) => {
     if (e) e.preventDefault();
     await DataService.saveConfig(config);
-    setSavedMsg(true);
-    setTimeout(() => setSavedMsg(false), 3000);
+    showSavedBanner();
   };
 
   const handleUploadLogo = async (e) => {
@@ -106,22 +116,19 @@ export default function Config() {
   };
 
   // --- ADMINISTRAR HERO IMAGES LIST ---
-  const handleUploadHeroImage = async (e) => {
+  const handleUploadHeroImage = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setHeroUploading(true);
-    try {
-      const url = await DataService.uploadImage(file);
-      const updatedImages = [...(config.heroImages || []), url];
-      const updatedConfig = { ...config, heroImages: updatedImages };
-      setConfig(updatedConfig);
-      await DataService.saveConfig(updatedConfig);
-      showSavedBanner();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setHeroUploading(false);
-    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImageSrc(reader.result);
+      setEditingIdx(null);
+      setCropZoom(1);
+      setCropOffset({ x: 0, y: 0 });
+      setShowCropModal(true);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleRemoveHeroImage = (idx) => {
@@ -130,6 +137,139 @@ export default function Config() {
     setConfig(updatedConfig);
     DataService.saveConfig(updatedConfig);
     showSavedBanner();
+  };
+
+  const handleEditHeroImage = (e, idx) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImageSrc(reader.result);
+      setEditingIdx(idx);
+      setCropZoom(1);
+      setCropOffset({ x: 0, y: 0 });
+      setShowCropModal(true);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Manejadores de arrastre/paneo del cropper
+  const handleDragStart = (e) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - cropOffset.x, y: e.clientY - cropOffset.y });
+  };
+
+  const handleDragMove = (e) => {
+    if (!isDragging) return;
+    setCropOffset({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    });
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.touches[0].clientX - cropOffset.x, y: e.touches[0].clientY - cropOffset.y });
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isDragging || e.touches.length !== 1) return;
+    setCropOffset({
+      x: e.touches[0].clientX - dragStart.x,
+      y: e.touches[0].clientY - dragStart.y
+    });
+  };
+
+  const dataURLtoFile = (dataurl, filename) => {
+    let arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+        bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+    while(n--){
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, {type:mime});
+  };
+
+  const handleCropSave = async () => {
+    try {
+      const imgElement = imageRef.current;
+      if (!imgElement) return;
+
+       const canvas = document.createElement('canvas');
+       canvas.width = 1600;
+       canvas.height = 900;
+       const ctx = canvas.getContext('2d');
+
+       const cw = 480;
+       const ch = 270;
+
+      const imgWidth = imgElement.naturalWidth || imgElement.width || 1600;
+      const imgHeight = imgElement.naturalHeight || imgElement.height || 900;
+
+      const imgAspect = imgWidth / imgHeight;
+      const containerAspect = cw / ch;
+
+      let previewWidth, previewHeight;
+      if (imgAspect > containerAspect) {
+        previewWidth = cw;
+        previewHeight = cw / imgAspect;
+      } else {
+        previewHeight = ch;
+        previewWidth = ch * imgAspect;
+      }
+
+      const scaleToCanvas = 1600 / cw;
+
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const drawWidth = previewWidth * cropZoom * scaleToCanvas;
+      const drawHeight = previewHeight * cropZoom * scaleToCanvas;
+      const translateX = cropOffset.x * scaleToCanvas;
+      const translateY = cropOffset.y * scaleToCanvas;
+
+      ctx.save();
+      ctx.translate(canvas.width / 2 + translateX, canvas.height / 2 + translateY);
+      ctx.drawImage(imgElement, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+      ctx.restore();
+
+      const croppedBase64 = canvas.toDataURL('image/jpeg', 0.9);
+      
+      setHeroUploading(true);
+      setShowCropModal(false);
+      
+      const fileObj = dataURLtoFile(croppedBase64, 'cropped_slider.jpg');
+      const url = await DataService.uploadImage(fileObj);
+      
+      let updatedImages = [...(config.heroImages || [])];
+      if (editingIdx !== null) {
+        updatedImages[editingIdx] = url;
+        setHeroEditMsg('¡Imagen del Slider recortada, editada y actualizada con éxito!');
+      } else {
+        updatedImages.push(url);
+        setHeroEditMsg('¡Imagen del Slider recortada y añadida con éxito!');
+      }
+      
+      const updatedConfig = { ...config, heroImages: updatedImages };
+      setConfig(updatedConfig);
+      await DataService.saveConfig(updatedConfig);
+      showSavedBanner();
+    } catch (err) {
+      console.error(err);
+      setHeroEditMsg('Error al guardar la imagen recortada.');
+    } finally {
+      setHeroUploading(false);
+      setCropImageSrc(null);
+      setCropZoom(1);
+      setCropOffset({ x: 0, y: 0 });
+      setEditingIdx(null);
+    }
   };
 
   // --- ADMINISTRAR SELECCIÓN DE OFERTAS ---
@@ -379,6 +519,23 @@ CREATE TABLE IF NOT EXISTS config (
             </h3>
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '-6px' }}>Arrastra o selecciona archivos de imagen para añadirlos directamente al carrusel principal</p>
 
+            {heroEditMsg && (
+              <div style={{
+                padding: '10px 12px',
+                backgroundColor: '#EBFBEE',
+                color: '#2F855A',
+                border: '1px solid #C6F6D5',
+                fontSize: '12px',
+                fontWeight: 500,
+                borderRadius: '0px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <CheckCircle size={14} /> {heroEditMsg}
+              </div>
+            )}
+
             <div style={{
               border: '2px dashed var(--border-color)',
               borderRadius: '0px',
@@ -407,11 +564,39 @@ CREATE TABLE IF NOT EXISTS config (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '10px' }}>
               {config.heroImages?.map((url, idx) => (
                 <div key={idx} style={{ position: 'relative', width: '90px', height: '60px', border: '1px solid var(--border-color)', backgroundColor: '#fff', padding: '2px' }}>
-                  <img src={url} alt={`Hero ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <SafeImage src={url} alt={`Hero ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  
+                  {/* Botón Reemplazar/Editar */}
+                  <label style={{
+                    position: 'absolute',
+                    bottom: '-6px',
+                    left: '-6px',
+                    backgroundColor: '#1a56db',
+                    color: '#FFF',
+                    borderRadius: '50%',
+                    width: '18px',
+                    height: '18px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                    fontSize: '10px'
+                  }} title="Editar/Reemplazar Imagen">
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={(e) => handleEditHeroImage(e, idx)} 
+                      style={{ display: 'none' }} 
+                    />
+                    ✎
+                  </label>
+
                   <button 
                     type="button" 
                     onClick={() => handleRemoveHeroImage(idx)}
-                    style={{ position: 'absolute', top: '-6px', right: '-6px', backgroundColor: '#FF4D6D', color: '#FFF', border: 'none', borderRadius: '50%', width: '16px', height: '16px', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    style={{ position: 'absolute', top: '-6px', right: '-6px', backgroundColor: '#FF4D6D', color: '#FFF', border: 'none', borderRadius: '50%', width: '18px', height: '18px', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}
+                    title="Eliminar Imagen"
                   >
                     <X size={10} />
                   </button>
@@ -750,6 +935,131 @@ CREATE TABLE IF NOT EXISTS config (
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* MODAL DE RECORTE DE IMAGEN INTERACTIVO (Zoom & Drag) */}
+      {showCropModal && cropImageSrc && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          zIndex: 9999,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div className="card" style={{
+            backgroundColor: '#FFF',
+            padding: '24px',
+            maxWidth: '550px',
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            borderRadius: '0px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+            alignItems: 'center'
+          }}>
+            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 600 }}>Ajustar y Recortar Imagen para el Slider</h3>
+              <button 
+                type="button" 
+                onClick={() => { setShowCropModal(false); setCropImageSrc(null); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '-8px' }}>
+              Arrastra la imagen para moverla y usa el control inferior para hacer zoom. El recuadro de borde dorado representa cómo se verá en el slider.
+            </p>
+
+            {/* Contenedor del crop frame (Aspecto 16:9) */}
+            <div 
+              onMouseDown={handleDragStart}
+              onMouseMove={handleDragMove}
+              onMouseUp={handleDragEnd}
+              onMouseLeave={handleDragEnd}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleDragEnd}
+              style={{
+                width: '480px',
+                height: '270px',
+                backgroundColor: '#111',
+                position: 'relative',
+                overflow: 'hidden',
+                cursor: 'move',
+                border: '2px solid #DFB15B',
+                boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)',
+                userSelect: 'none'
+              }}
+            >
+              <img 
+                ref={imageRef}
+                src={cropImageSrc} 
+                alt="Vista previa para recorte" 
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: '50%',
+                  transform: `translate(-50%, -50%) translate(${cropOffset.x}px, ${cropOffset.y}px) scale(${cropZoom})`,
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  pointerEvents: 'none',
+                  userSelect: 'none'
+                }}
+              />
+              {/* Overlay semitransparente */}
+              <div style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0, bottom: 0,
+                boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.2)',
+                pointerEvents: 'none'
+              }} />
+            </div>
+
+            {/* Zoom Slider */}
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                <span>Zoom</span>
+                <span>{Math.round(cropZoom * 100)}%</span>
+              </div>
+              <input 
+                type="range" 
+                min="1" 
+                max="3" 
+                step="0.05"
+                value={cropZoom}
+                onChange={(e) => setCropZoom(parseFloat(e.target.value))}
+                style={{ width: '100%', accentColor: '#DFB15B' }}
+              />
+            </div>
+
+            {/* Botones */}
+            <div style={{ display: 'flex', gap: '12px', width: '100%', marginTop: '8px' }}>
+              <button 
+                type="button" 
+                onClick={handleCropSave}
+                className="btn-primary" 
+                style={{ flex: 1, backgroundColor: '#DFB15B', color: '#111', border: 'none', fontWeight: 600, padding: '10px', fontSize: '13px', borderRadius: '0px' }}
+              >
+                Recortar y Guardar
+              </button>
+              <button 
+                type="button" 
+                onClick={() => { setShowCropModal(false); setCropImageSrc(null); }}
+                className="btn-secondary" 
+                style={{ flex: 1, padding: '10px', fontSize: '13px', borderRadius: '0px' }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -167,17 +167,8 @@ export default function Storefront({ onOpenCart }) {
           }}
         />
 
-        {/* Contenido Hero Alineado a la Izquierda y abajo */}
-        <div style={{
-          position: 'absolute',
-          bottom: '50px', // Casi pegado al piso del slider
-          left: '50px',   // Desplazado a la izquierda
-          zIndex: 2,
-          maxWidth: '750px',
-          width: 'calc(100% - 100px)',
-          textAlign: 'left',
-          animation: 'slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards'
-        }}>
+        {/* Contenido Hero Alineado al Centro-Derecha (Caja Roja del usuario) */}
+        <div className="hero-content-container">
           <h1 style={{
             fontSize: 'calc(18px + 1vw)',
             fontWeight: 500,
@@ -210,6 +201,32 @@ export default function Storefront({ onOpenCart }) {
             </Link>
           </div>
         </div>
+
+        <style>{`
+          .hero-content-container {
+            position: absolute;
+            bottom: 50px;
+            left: 36%;
+            z-index: 2;
+            max-width: 650px;
+            width: calc(100% - 40%);
+            text-align: left;
+            animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          }
+          @media (max-width: 992px) {
+            .hero-content-container {
+              left: 20%;
+              width: calc(100% - 25%);
+            }
+          }
+          @media (max-width: 768px) {
+            .hero-content-container {
+              left: 20px;
+              width: calc(100% - 40px);
+              bottom: 40px;
+            }
+          }
+        `}</style>
 
         {/* Flechas Hero */}
         {heroImageList.length > 1 && (
