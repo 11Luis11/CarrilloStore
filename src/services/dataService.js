@@ -3,14 +3,25 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-let supabase = null;
-if (supabaseUrl && supabaseAnonKey) {
+export let supabase = null;
+
+export function initializeSupabase(url, key) {
+  if (!url || !key) {
+    supabase = null;
+    return;
+  }
   try {
-    supabase = createClient(supabaseUrl, supabaseAnonKey);
+    supabase = createClient(url, key);
   } catch (error) {
     console.error('Error al inicializar Supabase:', error);
+    supabase = null;
   }
 }
+
+// Inicializar con variables de entorno o guardadas en localStorage
+const storedUrl = typeof window !== 'undefined' ? localStorage.getItem('supabase_url') : '';
+const storedKey = typeof window !== 'undefined' ? localStorage.getItem('supabase_anon_key') : '';
+initializeSupabase(storedUrl || supabaseUrl, storedKey || supabaseAnonKey);
 
 // ==========================================
 // SECCIÓN: BASE DE DATOS LOCAL DE RESPALDO (LocalStorage)
@@ -97,17 +108,12 @@ const DEFAULT_CONFIG = {
   heroTitle: 'Polos que reflejan tu estilo',
   heroSubtitle: 'Diseño minimalista, materiales premium y caída perfecta para elevar tu vestimenta diaria.',
   bannerText: 'ENVÍOS GRATIS A TODO EL PAÍS POR COMPRAS MAYORES A S/.199',
-  
-  // Múltiples Imágenes para el Hero Slider principal
   heroImages: [
     'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=1600&auto=format&fit=crop&q=80',
     'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?w=1600&auto=format&fit=crop&q=80',
     'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=1600&auto=format&fit=crop&q=80'
   ],
-
-  // IDs de productos seleccionados para el carrusel de texto de ofertas
   selectedOffers: [],
-
   videos: [
     {
       id: 'v-1',
@@ -128,12 +134,10 @@ const DEFAULT_CONFIG = {
       desc: 'Diseño vanguardista con tintas ecológicas de larga duración'
     }
   ],
-  
   testimonials: [
     { id: 't-1', name: 'Alejandro R.', stars: 5, comment: 'La calidad del polo oversize es espectacular. Se siente el algodón pesado y, después de varias lavadas, sigue igual de firme.', date: '2026-05-12' },
     { id: 't-2', name: 'Valeria M.', stars: 5, comment: 'Los polos básicos de algodón Pima son un sueño. Súper frescos y el corte tiene una caída increíble.', date: '2026-06-01' }
   ],
-
   footer: {
     whatsapp: '+51 987 654 321',
     email: 'soporte@carrillostore.com',
@@ -142,12 +146,10 @@ const DEFAULT_CONFIG = {
     instagramUrl: '#',
     tiktokUrl: '#'
   },
-
   users: [
     { id: 'u-1', name: 'Administrador Principal', email: 'admin@carrillostore.com', role: 'admin' },
     { id: 'u-2', name: 'Carlos POS', email: 'carlos@carrillostore.com', role: 'employee' }
   ],
-
   cupons: [
     { code: 'BIENVENIDO10', discountPercent: 10, active: true },
     { code: 'PREMIUM20', discountPercent: 20, active: true }
@@ -191,8 +193,48 @@ export const DataService = {
     return supabase !== null;
   },
 
+  async testSupabaseConnection(url, key) {
+    if (!url || !key) {
+      return { success: false, message: 'URL o Key no proporcionados.' };
+    }
+    try {
+      const client = createClient(url, key);
+      const { data, error } = await client.from('config').select('*').limit(1);
+      if (error) {
+        return { success: false, message: `Error de Supabase: ${error.message} (Código ${error.code})` };
+      }
+      return { success: true, message: 'Conexión exitosa. Base de datos vinculada.' };
+    } catch (err) {
+      return { success: false, message: `Fallo de red o credencial: ${err.message}` };
+    }
+  },
+
+  async getCredentials() {
+    return {
+      url: localStorage.getItem('supabase_url') || import.meta.env.VITE_SUPABASE_URL || '',
+      key: localStorage.getItem('supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+    };
+  },
+
+  async saveCredentials(url, key) {
+    localStorage.setItem('supabase_url', url || '');
+    localStorage.setItem('supabase_anon_key', key || '');
+    initializeSupabase(url, key);
+    // Disparar recarga en los componentes suscritos
+    window.dispatchEvent(new CustomEvent('supabase_realtime_local', { detail: { key: 'credentials' } }));
+    return true;
+  },
+
   // --- CONFIGURACIÓN DE TIENDA ---
   async getConfig() {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('config').select('value').eq('key', 'config').single();
+        if (!error && data) return data.value;
+      } catch (e) {
+        console.error('Error al obtener config de Supabase:', e);
+      }
+    }
     return getLocalData('config', DEFAULT_CONFIG);
   },
 
@@ -200,16 +242,83 @@ export const DataService = {
     const current = getLocalData('config', DEFAULT_CONFIG);
     const updated = { ...current, ...newConfig };
     setLocalData('config', updated);
+
+    if (supabase) {
+      try {
+        await supabase.from('config').upsert({ key: 'config', value: updated });
+      } catch (e) {
+        console.error('Error al guardar config en Supabase:', e);
+      }
+    }
     return updated;
   },
 
   // --- CATEGORÍAS ---
   async getCategories() {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('categories').select('*');
+        if (!error && data) return data;
+      } catch (e) {
+        console.error('Error al obtener categorías de Supabase:', e);
+      }
+    }
     return getLocalData('categories', DEFAULT_CATEGORIES);
+  },
+
+  async saveCategory(category) {
+    const categories = getLocalData('categories', DEFAULT_CATEGORIES);
+    let updatedCategory = { ...category };
+    if (!category.id) {
+      updatedCategory.id = 'cat-' + Math.random().toString(36).substr(2, 9);
+      if (!updatedCategory.slug) {
+        updatedCategory.slug = updatedCategory.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      }
+      categories.push(updatedCategory);
+    } else {
+      const index = categories.findIndex(c => c.id === category.id);
+      if (index !== -1) {
+        categories[index] = { ...categories[index], ...category };
+        updatedCategory = categories[index];
+      }
+    }
+    setLocalData('categories', categories);
+
+    if (supabase) {
+      try {
+        await supabase.from('categories').upsert(updatedCategory);
+      } catch (e) {
+        console.error('Error al guardar categoría en Supabase:', e);
+      }
+    }
+    return updatedCategory;
+  },
+
+  async deleteCategory(id) {
+    const categories = getLocalData('categories', DEFAULT_CATEGORIES);
+    const filtered = categories.filter(c => c.id !== id);
+    setLocalData('categories', filtered);
+
+    if (supabase) {
+      try {
+        await supabase.from('categories').delete().eq('id', id);
+      } catch (e) {
+        console.error('Error al eliminar categoría de Supabase:', e);
+      }
+    }
+    return true;
   },
 
   // --- PRODUCTOS ---
   async getProducts() {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
+        if (!error && data) return data;
+      } catch (e) {
+        console.error('Error al obtener productos de Supabase:', e);
+      }
+    }
     return getLocalData('products', DEFAULT_PRODUCTS);
   },
 
@@ -233,6 +342,31 @@ export const DataService = {
       }
     }
     setLocalData('products', products);
+
+    if (supabase) {
+      try {
+        const payload = {
+          id: updatedProduct.id,
+          category_id: updatedProduct.category_id,
+          name: updatedProduct.name,
+          sku: updatedProduct.sku,
+          description: updatedProduct.description,
+          price: parseFloat(updatedProduct.price) || 0,
+          offer_price: updatedProduct.offer_price !== null ? parseFloat(updatedProduct.offer_price) : null,
+          wholesale_price: updatedProduct.wholesale_price !== null ? parseFloat(updatedProduct.wholesale_price) : null,
+          wholesale_min_qty: parseInt(updatedProduct.wholesale_min_qty) || 6,
+          stock: parseInt(updatedProduct.stock) || 0,
+          image_url: updatedProduct.image_url,
+          images: updatedProduct.images,
+          active: updatedProduct.active,
+          created_at: updatedProduct.created_at,
+          updated_at: updatedProduct.updated_at || new Date().toISOString()
+        };
+        await supabase.from('products').upsert(payload);
+      } catch (e) {
+        console.error('Error al guardar producto en Supabase:', e);
+      }
+    }
     return updatedProduct;
   },
 
@@ -240,11 +374,27 @@ export const DataService = {
     const products = getLocalData('products', DEFAULT_PRODUCTS);
     const filtered = products.filter(p => p.id !== id);
     setLocalData('products', filtered);
+
+    if (supabase) {
+      try {
+        await supabase.from('products').delete().eq('id', id);
+      } catch (e) {
+        console.error('Error al eliminar producto de Supabase:', e);
+      }
+    }
     return true;
   },
 
   // --- CLIENTES ---
   async getCustomers() {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('customers').select('*');
+        if (!error && data) return data;
+      } catch (e) {
+        console.error('Error al obtener clientes de Supabase:', e);
+      }
+    }
     return getLocalData('customers', DEFAULT_CUSTOMERS);
   },
 
@@ -262,6 +412,14 @@ export const DataService = {
       }
     }
     setLocalData('customers', customers);
+
+    if (supabase) {
+      try {
+        await supabase.from('customers').upsert(updatedCustomer);
+      } catch (e) {
+        console.error('Error al guardar cliente en Supabase:', e);
+      }
+    }
     return updatedCustomer;
   },
 
@@ -349,10 +507,28 @@ export const DataService = {
 
   // --- VENTAS Y FACTURACIÓN ---
   async getSales() {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('sales').select('*').order('created_at', { ascending: false });
+        if (!error && data) return data;
+      } catch (e) {
+        console.error('Error al obtener ventas de Supabase:', e);
+      }
+    }
     return getLocalData('sales', []);
   },
 
   async getSaleItems(saleId) {
+    if (supabase) {
+      try {
+        const query = supabase.from('sale_items').select('*');
+        if (saleId) query.eq('sale_id', saleId);
+        const { data, error } = await query;
+        if (!error && data) return data;
+      } catch (e) {
+        console.error('Error al obtener items de venta de Supabase:', e);
+      }
+    }
     const items = getLocalData('sale_items', []);
     if (saleId) {
       return items.filter(item => item.sale_id === saleId);
@@ -389,6 +565,7 @@ export const DataService = {
     sales.unshift(newSale);
     setLocalData('sales', sales);
 
+    const itemsPayload = [];
     saleData.items.forEach(item => {
       const itemDetail = {
         id: 'item-' + Math.random().toString(36).substr(2, 9),
@@ -400,6 +577,7 @@ export const DataService = {
         total_price: item.quantity * item.unit_price
       };
       saleItems.push(itemDetail);
+      itemsPayload.push(itemDetail);
 
       const prodIndex = products.findIndex(p => p.id === item.product_id);
       if (prodIndex !== -1) {
@@ -418,6 +596,22 @@ export const DataService = {
         saleData.total_amount,
         `Venta POS #${saleId.toUpperCase().slice(-5)} - Doc: ${invoiceNumber}`
       );
+    }
+
+    if (supabase) {
+      try {
+        await supabase.from('sales').insert(newSale);
+        await supabase.from('sale_items').insert(itemsPayload);
+        // Descontar stock en Supabase
+        for (const item of saleData.items) {
+          const prod = products.find(p => p.id === item.product_id);
+          if (prod) {
+            await supabase.from('products').update({ stock: prod.stock }).eq('id', item.product_id);
+          }
+        }
+      } catch (e) {
+        console.error('Error al guardar venta en Supabase:', e);
+      }
     }
     return newSale;
   },
@@ -455,6 +649,21 @@ export const DataService = {
         `ANULACIÓN VENTA POS #${sale.id.toUpperCase().slice(-5)} (${sale.invoice_number})`,
         operator
       );
+    }
+
+    if (supabase) {
+      try {
+        await supabase.from('sales').update({ status: 'voided' }).eq('id', saleId);
+        // Devolver stock en Supabase
+        for (const item of items) {
+          const prod = products.find(p => p.id === item.product_id);
+          if (prod) {
+            await supabase.from('products').update({ stock: prod.stock }).eq('id', item.product_id);
+          }
+        }
+      } catch (e) {
+        console.error('Error al anular venta en Supabase:', e);
+      }
     }
     return sale;
   },

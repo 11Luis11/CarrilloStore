@@ -7,7 +7,7 @@ import { DataService } from '../../services/dataService';
 import { VideoPlayer } from '../../components/MediaResolver';
 
 export default function Config() {
-  const [activeTab, setActiveTab] = useState('general'); // 'general', 'wholesale', 'reviews', 'footer', 'users', 'videos'
+  const [activeTab, setActiveTab] = useState('general'); // 'general', 'wholesale', 'reviews', 'footer', 'users', 'videos', 'database'
   const [config, setConfig] = useState(null);
   const [savedMsg, setSavedMsg] = useState(false);
   
@@ -30,15 +30,41 @@ export default function Config() {
   // New user form
   const [newUser, setNewUser] = useState({ name: '', email: '', role: 'employee' });
 
+  // Supabase connection testing states
+  const [dbCreds, setDbCreds] = useState({ url: '', key: '' });
+  const [testStatus, setTestStatus] = useState('idle'); // 'idle', 'testing', 'success', 'error'
+  const [testMsg, setTestMsg] = useState('');
+
   useEffect(() => {
     const loadConfigAndProducts = async () => {
       const cfg = await DataService.getConfig();
       setConfig(cfg);
       const prods = await DataService.getProducts();
       setProducts(prods);
+      
+      const creds = await DataService.getCredentials();
+      setDbCreds(creds);
     };
     loadConfigAndProducts();
   }, []);
+
+  const handleTestConnection = async () => {
+    setTestStatus('testing');
+    setTestMsg('');
+    const res = await DataService.testSupabaseConnection(dbCreds.url, dbCreds.key);
+    if (res.success) {
+      setTestStatus('success');
+      setTestMsg(res.message);
+    } else {
+      setTestStatus('error');
+      setTestMsg(res.message);
+    }
+  };
+
+  const handleSaveCredentials = async () => {
+    await DataService.saveCredentials(dbCreds.url, dbCreds.key);
+    showSavedBanner();
+  };
 
   const handleSave = async (e) => {
     if (e) e.preventDefault();
@@ -248,7 +274,8 @@ CREATE TABLE IF NOT EXISTS config (
           { id: 'reviews', label: 'Reseñas & Opiniones', icon: MessageSquare },
           { id: 'videos', label: 'Videos de Modelos', icon: Video },
           { id: 'footer', label: 'Pie de Página', icon: Settings },
-          { id: 'users', label: 'Usuarios y Permisos', icon: Users }
+          { id: 'users', label: 'Usuarios y Permisos', icon: Users },
+          { id: 'database', label: 'Conexión Supabase', icon: Database }
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -626,53 +653,100 @@ CREATE TABLE IF NOT EXISTS config (
         </form>
       )}
 
-      {/* PESTAÑA: USUARIOS */}
-      {activeTab === 'users' && (
+      {/* PESTAÑA: CONEXIÓN SUPABASE */}
+      {activeTab === 'database' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr', gap: '24px', alignItems: 'start' }}>
           
-          <form onSubmit={handleAddUser} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: 600 }}>Agregar Operador POS</h3>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Database size={18} />
+              Vincular Credenciales
+            </h3>
             
             <div>
-              <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>Nombre</label>
-              <input type="text" required placeholder="Ej. Carlos Vendedor" className="input-field" value={newUser.name} onChange={e => setNewUser({ ...newUser, name: e.target.value })} />
+              <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', fontWeight: 500 }}>Supabase URL</label>
+              <input 
+                type="text" 
+                placeholder="https://xxxxxx.supabase.co" 
+                className="input-field" 
+                value={dbCreds.url} 
+                onChange={e => setDbCreds({ ...dbCreds, url: e.target.value })} 
+              />
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>Email</label>
-              <input type="email" required placeholder="ejemplo@carrillostore.com" className="input-field" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} />
+              <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', fontWeight: 500 }}>Supabase Anon / Public Key</label>
+              <input 
+                type="password" 
+                placeholder="eyJhbGciOi..." 
+                className="input-field" 
+                value={dbCreds.key} 
+                onChange={e => setDbCreds({ ...dbCreds, key: e.target.value })} 
+              />
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>Rol Asignado</label>
-              <select className="input-field" value={newUser.role} onChange={e => setNewUser({ ...newUser, role: e.target.value })}>
-                <option value="employee">Empleado (Solo Ventas/POS)</option>
-                <option value="admin">Administrador (Control Total)</option>
-              </select>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+              <button 
+                type="button" 
+                onClick={handleTestConnection} 
+                disabled={testStatus === 'testing'}
+                className="btn-secondary" 
+                style={{ flex: 1, borderRadius: '0px', padding: '10px 16px', fontSize: '12px', fontWeight: 600 }}
+              >
+                {testStatus === 'testing' ? 'Probando...' : 'Probar Conexión'}
+              </button>
+              <button 
+                type="button" 
+                onClick={handleSaveCredentials}
+                className="btn-primary" 
+                style={{ flex: 1, borderRadius: '0px', padding: '10px 16px', fontSize: '12px', fontWeight: 600 }}
+              >
+                Guardar y Vincular
+              </button>
             </div>
+          </div>
 
-            <button type="submit" className="btn-primary" style={{ display: 'flex', gap: '8px', justifyContent: 'center', borderRadius: '0px' }}>
-              <Plus size={16} /> Crear Operador
-            </button>
-          </form>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '260px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 600 }}>Diagnóstico del Tester</h3>
+            
+            {testStatus === 'idle' && (
+              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', border: '1px dashed var(--border-color)', backgroundColor: '#FAFAFA' }}>
+                Ingresa tus credenciales y presiona "Probar Conexión" para validar el estado de Supabase.
+              </div>
+            )}
 
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: 600 }}>Cuentas Registradas</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {config.users?.map(u => (
-                <div key={u.id} style={{ padding: '16px', border: '1px solid var(--border-color)', display: 'flex', justifycontent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <strong style={{ fontSize: '13px' }}>{u.name}</strong>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>{u.email}</span>
-                    <span style={{ fontSize: '9px', backgroundColor: u.role === 'admin' ? '#EBF8FF' : '#F3F4F6', color: u.role === 'admin' ? '#2B6CB0' : '#4B5563', padding: '2px 6px', fontWeight: 600, display: 'inline-block', marginTop: '4px' }}>
-                      {u.role.toUpperCase()}
-                    </span>
-                  </div>
-                  {config.users.length > 1 && (
-                    <button type="button" onClick={() => handleDeleteUser(u.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-secondary)' }}><Trash2 size={16} /></button>
-                  )}
-                </div>
-              ))}
+            {testStatus === 'testing' && (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#2B6CB0', border: '1px solid #BEE3F8', backgroundColor: '#EBFBEE' }}>
+                <span className="spinner" style={{ display: 'inline-block', marginRight: '8px' }}>⏳</span>
+                Validando credenciales y conectando con el motor de base de datos...
+              </div>
+            )}
+
+            {testStatus === 'success' && (
+              <div style={{ padding: '20px', color: '#2F855A', border: '1px solid #C6F6D5', backgroundColor: '#EBFBEE', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} /> ¡Conexión Exitosa!
+                </strong>
+                <p style={{ fontSize: '13px', lineHeight: 1.4 }}>
+                  {testMsg}. Las tablas de Supabase están sincronizadas. El sistema pasará a escribir y leer datos en la nube de forma persistente e inmediata una vez que guardes los cambios.
+                </p>
+              </div>
+            )}
+
+            {testStatus === 'error' && (
+              <div style={{ padding: '20px', color: '#C53030', border: '1px solid #FED7D7', backgroundColor: '#FFF5F5', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <strong>❌ Conexión Fallida</strong>
+                <p style={{ fontSize: '13px', lineHeight: 1.4 }}>
+                  {testMsg}. Revisa que las credenciales coincidan exactamente y que tu base de datos esté activa, o que hayas corrido el script SQL en la sección de SQL Editor de Supabase.
+                </p>
+              </div>
+            )}
+
+            <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+              <h4 style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>¿Qué tablas son requeridas?</h4>
+              <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                Para evitar errores de base de datos, asegúrate de haber creado las tablas de <code>config</code>, <code>categories</code>, <code>products</code>, <code>customers</code>, <code>sales</code> y <code>sale_items</code> usando el script SQL que encontrarás en la guía local.
+              </p>
             </div>
           </div>
 

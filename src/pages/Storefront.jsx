@@ -263,6 +263,12 @@ export default function Storefront({ onOpenCart }) {
         .marquee-container:hover .marquee-content {
           animation-play-state: paused;
         }
+        @media (max-width: 768px) {
+          .marquee-content span {
+            font-size: 10px !important;
+            margin-right: 40px !important;
+          }
+        }
       `}</style>
 
       {/* CARRUSEL DE TEXTO DE PROMOCIONES EN MOVIMIENTO CONTINUO */}
@@ -403,7 +409,7 @@ export default function Storefront({ onOpenCart }) {
         </div>
       </section>
 
-      {/* PRODUCTOS DESTACADOS Y BUSCADOR */}
+      {/* PRODUCTOS DESTACADOS */}
       <section 
         ref={el => revealRefs.current[2] = el}
         className="reveal-on-scroll"
@@ -413,64 +419,11 @@ export default function Storefront({ onOpenCart }) {
           <div style={{ textAlign: 'center', marginBottom: '40px' }}>
             <span style={{ fontSize: '11px', letterSpacing: '0.25em', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Selección Exclusiva</span>
             <h2 style={{ fontSize: '32px', fontWeight: 400, marginTop: '8px', marginBottom: '24px', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Nuestros Polos</h2>
-            
-            {/* Buscador Interactivo para el Público */}
-            <div style={{ 
-              maxWidth: '480px', 
-              margin: '0 auto', 
-              position: 'relative',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
-              border: '1px solid var(--border-color)',
-              backgroundColor: '#FAFAFA'
-            }}>
-              <input 
-                type="text" 
-                placeholder="Buscar polos por nombre, estilo o color..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '14px 20px',
-                  border: 'none',
-                  outline: 'none',
-                  fontSize: '13px',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text-primary)',
-                  letterSpacing: '0.03em'
-                }}
-              />
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery('')}
-                  style={{
-                    position: 'absolute',
-                    right: '16px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--text-secondary)',
-                    fontSize: '12px',
-                    fontWeight: 600
-                  }}
-                >
-                  LIMPIAR
-                </button>
-              )}
-            </div>
           </div>
 
-          {/* Grilla de productos filtrados */}
-          {products.filter(p => 
-            p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-            p.description.toLowerCase().includes(searchQuery.toLowerCase())
-          ).length === 0 ? (
+          {products.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--text-secondary)' }}>
-              <p style={{ fontSize: '14px' }}>No se encontraron polos que coincidan con tu búsqueda.</p>
-              <button onClick={() => setSearchQuery('')} style={{ background: 'none', border: 'underline', color: 'var(--text-primary)', cursor: 'pointer', marginTop: '12px', fontWeight: 600 }}>
-                Ver Todos los Polos
-              </button>
+              <p style={{ fontSize: '14px' }}>No hay polos cargados en el catálogo actualmente.</p>
             </div>
           ) : (
             <div style={{
@@ -479,11 +432,7 @@ export default function Storefront({ onOpenCart }) {
               gap: '30px'
             }}>
               {products
-                .filter(p => 
-                  p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                  p.description.toLowerCase().includes(searchQuery.toLowerCase())
-                )
-                .slice(0, searchQuery ? 12 : 4) // Show up to 12 when searching, default to 4 featured
+                .slice(0, 8) // Mostrar los primeros 8 productos destacados
                 .map((prod) => (
                   <div 
                     key={prod.id} 
@@ -692,9 +641,10 @@ export default function Storefront({ onOpenCart }) {
           </p>
 
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-            gap: '30px'
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '24px',
+            justifyContent: 'center'
           }}>
             {(config.videos && config.videos.length > 0 ? config.videos : [
               {
@@ -714,11 +664,20 @@ export default function Storefront({ onOpenCart }) {
               }
             ]).map((video, idx) => (
               <div key={idx} style={{ 
-                backgroundColor: '#1C1C1E', 
-                border: '1px solid #2C2C2E',
-                overflow: 'hidden'
-              }}>
-                <div style={{ position: 'relative', height: '420px', width: '100%', overflow: 'hidden', backgroundColor: '#000' }}>
+                backgroundColor: '#000', 
+                borderRadius: '16px',
+                overflow: 'hidden',
+                boxShadow: '0 12px 30px rgba(0, 0, 0, 0.4)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                position: 'relative',
+                height: '460px', // Reels vertical height
+                width: '260px',
+                transition: 'transform 0.3s ease'
+              }}
+              onMouseOver={e => e.currentTarget.style.transform = 'translateY(-5px)'}
+              onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
+              >
+                <div style={{ position: 'relative', height: '100%', width: '100%', overflow: 'hidden' }}>
                   <VideoPlayer 
                     url={video.url} 
                     title={video.title} 
@@ -726,20 +685,21 @@ export default function Storefront({ onOpenCart }) {
                   <div style={{
                     position: 'absolute',
                     top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.85) 15%, transparent 60%)',
-                    pointerEvents: 'none'
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.3) 40%, transparent 70%)',
+                    pointerEvents: 'none',
+                    zIndex: 1
                   }} />
                   <div style={{
                     position: 'absolute',
-                    bottom: '24px',
-                    left: '24px',
-                    right: '24px',
+                    bottom: '20px',
+                    left: '20px',
+                    right: '20px',
                     textAlign: 'left',
                     color: '#FFF',
                     zIndex: 2
                   }}>
-                    <h3 style={{ fontSize: '18px', fontWeight: 500, marginBottom: '6px', color: '#FFF' }}>{video.title}</h3>
-                    <p style={{ fontSize: '12px', color: '#AEAEB2', fontWeight: 300, lineHeight: 1.4 }}>{video.desc}</p>
+                    <h3 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '4px', color: '#FFF', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>{video.title}</h3>
+                    <p style={{ fontSize: '11px', color: '#E5E5EA', fontWeight: 300, lineHeight: 1.3, textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>{video.desc}</p>
                   </div>
                 </div>
               </div>
